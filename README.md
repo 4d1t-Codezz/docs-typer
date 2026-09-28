@@ -23,8 +23,12 @@ Types a document into Google Docs one keystroke at a time, keeping its formattin
 
 **3. Mac only: allow permissions.** The first time you press **Start**, macOS asks for
 **Accessibility** (so it can type) and **Input Monitoring** (so it can stop when you touch
-anything). Turn both on for Docs Typer in **System Settings → Privacy & Security**, then press
-**Start** again.
+anything). Turn both on for Docs Typer in **System Settings → Privacy & Security**, then quit and
+reopen Docs Typer.
+
+> **Turned it on but it still asks?** Each install counts as a new app to macOS, so an old entry
+> won't match. In both lists, select **Docs Typer**, click **−** to remove it, then press **Start**
+> again and allow it fresh. Old **python3** entries from an earlier version can be removed too.
 
 > **Mac says the installer "can't be opened" or "Apple could not verify" it?** Click **Done**, then
 > go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to

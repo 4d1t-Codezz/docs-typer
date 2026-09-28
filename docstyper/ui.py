@@ -718,7 +718,7 @@ class App:
             self.root.attributes("-topmost", False)
             self.overlay.hide()
             self.set_status("Docs Typer needs Input Monitoring access so it can stop when you touch "
-                            "anything. Allow it in System Settings, then press Start again.", "warn")
+                            "anything. Allow it in System Settings, then quit and reopen Docs Typer.", "warn")
             self.backend.open_permission_settings("input")
             self.refresh()
             return

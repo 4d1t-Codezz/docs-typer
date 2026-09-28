@@ -308,8 +308,8 @@ class Backend:
         if not _cg.CGPreflightListenEventAccess():
             _cg.CGRequestListenEventAccess()
             return ("Docs Typer needs Input Monitoring access so it can stop when you touch anything. "
-                    "Allow it in System Settings → Privacy & Security → Input Monitoring, then press "
-                    "Start again.", "input")
+                    "Allow it in System Settings → Privacy & Security → Input Monitoring, then quit "
+                    "and reopen Docs Typer (macOS only applies it after a restart).", "input")
         return None
 
     def open_permission_settings(self, which=None):

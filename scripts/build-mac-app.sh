@@ -43,12 +43,24 @@ cp -R "$REPO/docstyper" "$REPO/assets" "$APP/Contents/Resources/app/"
 find "$APP/Contents/Resources/app" -name "__pycache__" -type d -prune -exec rm -rf {} +
 cp "$REPO/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
-cat > "$APP/Contents/MacOS/DocsTyper" <<EOF
+# The launcher runs Python inside the app's own process, so macOS files the Accessibility and
+# Input Monitoring permissions under Docs Typer (see mac-launcher.c). Without a C compiler, fall
+# back to a script, which works but makes macOS ask on behalf of python3 instead.
+LIBPY="$("$PY" -c 'import os, sysconfig as s; fw = s.get_config_var("PYTHONFRAMEWORKPREFIX"); ld = s.get_config_var("LDLIBRARY"); print(os.path.join(fw, ld) if fw else os.path.join(s.get_config_var("LIBDIR"), ld))')"
+PYHOME="$("$PY" -c 'import sys; print(sys.base_prefix)')"
+if [ -f "$LIBPY" ] && xcrun --find cc >/dev/null 2>&1; then
+  cc -O2 -Wall -o "$APP/Contents/MacOS/DocsTyper" "$REPO/scripts/mac-launcher.c" \
+    -DLIBPYTHON="\"$LIBPY\"" -DPYTHONHOME_DIR="\"$PYHOME\""
+else
+  echo "Note: no C compiler (install one with: xcode-select --install), so macOS will list the" >&2
+  echo "permissions under python3 instead of Docs Typer." >&2
+  cat > "$APP/Contents/MacOS/DocsTyper" <<EOF
 #!/bin/bash
 cd "\$(dirname "\$0")/../Resources/app"
 exec "$PY" -m docstyper
 EOF
-chmod +x "$APP/Contents/MacOS/DocsTyper"
+  chmod +x "$APP/Contents/MacOS/DocsTyper"
+fi
 
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -69,4 +81,6 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 EOF
 
 xattr -cr "$APP" 2>/dev/null || true  # drop the download quarantine copied from a zipped repo
+# Sign it (ad hoc) so macOS can tell it's the same app when you grant it permissions.
+codesign --force --sign - --identifier local.docstyper "$APP" >/dev/null 2>&1 || true
 echo "Built: $APP"
