@@ -46,8 +46,10 @@ You need **Python 3.10+ with Tk 8.6**. The installers from
 ### macOS
 
 1. Install Python from python.org. The Python that ships with macOS has an old Tk, so don't use it.
+   Homebrew's Python may not work either (its XML parser breaks on some macOS versions, so `.docx`
+   files won't open). If you don't want the python.org installer: `brew install uv && uv python install 3.12`.
 2. Download or clone this repo.
-3. Build the app: `./mac/build-app.sh`. Then drag `dist/Docs Typer.app` to Applications.
+3. Build the app: `./mac/build-app.sh`. It finds a suitable Python automatically. Then drag `dist/Docs Typer.app` to Applications.
    - Or run it straight from the repo: double-click `mac/Docs Typer.command`.
 4. The first time you press Start, macOS asks for two permissions, the same ones the original
    Swift app needed:

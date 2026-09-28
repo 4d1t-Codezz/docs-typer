@@ -5,23 +5,32 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
-PY="${1:-$(command -v python3 || true)}"
+# A usable Python is 3.10+ with Tk 8.6+ and a working XML parser (needed for .docx/.odt).
+# Homebrew's Python can fail the last check on some macOS versions (pyexpat links the system libexpat).
+CHECK='import sys, tkinter, pyexpat; assert sys.version_info >= (3, 10) and tkinter.TkVersion >= 8.6; print(sys.executable)'
 
-if [ -z "$PY" ]; then
-  echo "python3 not found. Install Python 3.10+ from https://www.python.org/downloads/macos/" >&2
-  exit 1
-fi
-PY="$("$PY" -c 'import sys; print(sys.executable)')"
-
-TK=$("$PY" -c 'import tkinter; print(tkinter.TkVersion)' 2>/dev/null || echo "none")
-case "$TK" in
-  8.6*|9.*) ;;
-  *)
-    echo "The Python at $PY has Tk $TK. Docs Typer needs Tk 8.6 or newer." >&2
-    echo "Use the python.org installer (or: brew install python-tk) and pass its python3 to this script." >&2
+if [ $# -ge 1 ]; then
+  if ! PY="$("$1" -c "$CHECK" 2>/dev/null)"; then
+    echo "The Python at $1 needs to be 3.10+ with Tk 8.6+ and a working pyexpat module." >&2
     exit 1
-    ;;
-esac
+  fi
+else
+  PY=""
+  for c in \
+      "$(command -v uv >/dev/null && uv python find '>=3.10' 2>/dev/null || true)" \
+      /Library/Frameworks/Python.framework/Versions/3.1[0-9]/bin/python3 \
+      python3.13 python3.12 python3.11 python3.10 python3; do
+    [ -n "$c" ] || continue
+    if PY="$("$c" -c "$CHECK" 2>/dev/null)"; then break; fi
+    PY=""
+  done
+  if [ -z "$PY" ]; then
+    echo "No suitable Python found (needs 3.10+ with Tk 8.6+ and pyexpat)." >&2
+    echo "Install one from https://www.python.org/downloads/macos/, or: brew install uv && uv python install 3.12" >&2
+    exit 1
+  fi
+fi
+echo "Using $PY"
 
 APP="$REPO/dist/Docs Typer.app"
 rm -rf "$APP"

@@ -10,6 +10,7 @@ from docstyper.readers import read_html
 
 try:
     _root = tk.Tk()
+    _root.update_idletasks()  # Tk 9 on macOS crashes the next Tk() if a root dies with idle work pending
     _root.destroy()
     HAVE_DISPLAY = True
 except tk.TclError:
