@@ -1,5 +1,6 @@
 # Creates Start menu and desktop shortcuts for Docs Typer (and refreshes a taskbar pin if there is one).
-# Run from PowerShell:  powershell -ExecutionPolicy Bypass -File windows\install-shortcuts.ps1
+# "Install on Windows.bat" runs this. To run it by hand:
+#   powershell -ExecutionPolicy Bypass -File scripts\make-windows-shortcuts.ps1
 
 $repo = Split-Path -Parent $PSScriptRoot
 $pythonw = (Get-Command pythonw -ErrorAction SilentlyContinue).Source
@@ -26,4 +27,3 @@ foreach ($path in $targets) {
     $lnk.Save()
     Write-Output "Wrote $path"
 }
-Write-Output "Done. To pin it: press Start, type Docs Typer, right-click it, and choose Pin to taskbar."

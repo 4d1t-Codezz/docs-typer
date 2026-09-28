@@ -1,6 +1,9 @@
 #!/bin/bash
 # Builds "dist/Docs Typer.app", a double-clickable app that bundles the code and runs it with
-# the Python you build it with. Usage:  ./mac/build-app.sh  [path/to/python3]
+# the Python you build it with. Most people should double-click "Install on Mac.command" instead,
+# which runs this and puts the app in Applications.
+# Usage:  ./scripts/build-mac-app.sh  [path/to/python3]
+# Exits with status 2 when no suitable Python is found.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -16,8 +19,9 @@ if [ $# -ge 1 ]; then
   fi
 else
   PY=""
+  UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
   for c in \
-      "$(command -v uv >/dev/null && uv python find '>=3.10' 2>/dev/null || true)" \
+      "$("$UV" python find '>=3.10' 2>/dev/null || true)" \
       /Library/Frameworks/Python.framework/Versions/3.1[0-9]/bin/python3 \
       python3.13 python3.12 python3.11 python3.10 python3; do
     [ -n "$c" ] || continue
@@ -27,7 +31,7 @@ else
   if [ -z "$PY" ]; then
     echo "No suitable Python found (needs 3.10+ with Tk 8.6+ and pyexpat)." >&2
     echo "Install one from https://www.python.org/downloads/macos/, or: brew install uv && uv python install 3.12" >&2
-    exit 1
+    exit 2
   fi
 fi
 echo "Using $PY"
@@ -64,5 +68,5 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 
+xattr -cr "$APP" 2>/dev/null || true  # drop the download quarantine copied from a zipped repo
 echo "Built: $APP"
-echo "Drag it to Applications. On first Start, macOS asks for Accessibility and Input Monitoring access."
