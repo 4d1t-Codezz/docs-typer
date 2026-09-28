@@ -61,6 +61,8 @@ Tips:
   headings 1–6, bullet and numbered lists with nesting, and alignment. These are recreated with
   Google Docs' own keyboard shortcuts (Ctrl-based on Windows, ⌘-based on Mac).
 - **Speed from 10 to 200 wpm**, with an optional *vary pace* mode that adds natural pauses.
+- **Retype words** (optional): every so often it deletes the word it just typed and types it
+  again, like a second thought. It only does this where the word keeps its formatting.
 - **Hands-off safety:** any real key, click, scroll or mouse movement stops typing, and so does
   switching to another app.
 - **Live view:** the text in the window lights up as it's typed, a key strip shows each key, and

@@ -67,7 +67,7 @@ class FakeBackend:
     def type_char(self, ch):
         raise AssertionError("the smoke test must never type")
 
-    press_enter = press_tab = shortcut = type_char
+    press_enter = press_tab = press_backspace = shortcut = type_char
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "needs a display")

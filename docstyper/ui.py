@@ -311,14 +311,19 @@ class App:
         opts.grid(row=5, column=0, sticky="w")
         self.keep_formatting = tk.BooleanVar(value=self.prefs.get("keep_formatting", True))
         self.vary_pace = tk.BooleanVar(value=self.prefs.get("vary_pace", True))
+        self.retype_words = tk.BooleanVar(value=self.prefs.get("retype_words", False))
         keep = Check(opts, "Keep formatting", self.keep_formatting, self.options_changed, scale=s)
         keep.pack(side="left")
         vary = Check(opts, "Vary pace slightly", self.vary_pace, self.options_changed, scale=s)
         vary.pack(side="left", padx=(px(12), 0))
+        retype = Check(opts, "Retype words", self.retype_words, self.options_changed, scale=s)
+        retype.pack(side="left", padx=(px(12), 0))
         Tooltip([keep, keep.box, keep.label], "Recreates bold, italics, underline, headings, lists and "
                 "alignment using Google Docs keyboard shortcuts.", scale=s)
         Tooltip([vary, vary.box, vary.label], "Adds small, natural pauses: a beat after sentences and "
                 "now and then between words.", scale=s)
+        Tooltip([retype, retype.box, retype.label], "Every so often, deletes the word it just typed "
+                "and types it again, like a second thought.", scale=s)
 
         self.progress = Progress(outer, scale=s)
         self.progress.grid(row=6, column=0, sticky="ew", padx=inset, pady=(px(8), px(8)))
@@ -372,7 +377,8 @@ class App:
 
     def save_prefs(self):
         save_settings({"wpm": self.wpm, "countdown": self.countdown_secs, "accent": C["accent"],
-                       "keep_formatting": self.keep_formatting.get(), "vary_pace": self.vary_pace.get()})
+                       "keep_formatting": self.keep_formatting.get(), "vary_pace": self.vary_pace.get(),
+                       "retype_words": self.retype_words.get()})
 
     # -- text box
     def _style_tags(self):
@@ -724,7 +730,8 @@ class App:
             return
         self.state = "typing"
         self.overlay.hide(350)
-        self.typer = Typer(self.backend, self.ops, self.pos, target, lambda: self.wpm, self.vary_pace.get())
+        self.typer = Typer(self.backend, self.ops, self.pos, target, lambda: self.wpm, self.vary_pace.get(),
+                           self.retype_words.get())
         self.last_seen = self.pos
         if self.run_started is None:
             self.run_started = time.perf_counter()

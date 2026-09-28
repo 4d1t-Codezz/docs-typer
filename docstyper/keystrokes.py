@@ -91,16 +91,24 @@ def is_glyph(op):
     return op[0] != "k"
 
 
+def is_word_char(op):
+    return op[0] == "c" and (op[1].isalnum() or op[1] in "'’-")
+
+
 class Typer:
     """Plays ops into the front app on a background thread until done, stopped, or focus moves."""
 
-    def __init__(self, backend, ops, start, target, get_wpm, vary):
+    RETYPE_CHANCE = 0.04  # per word that can be retyped, so roughly one every 30 to 40 words
+
+    def __init__(self, backend, ops, start, target, get_wpm, vary, retype=False):
         self.backend, self.ops, self.pos = backend, ops, start
-        self.target, self.get_wpm, self.vary = target, get_wpm, vary
+        self.target, self.get_wpm, self.vary, self.retype = target, get_wpm, vary, retype
         self.cancel = threading.Event()
         self.stop_reason = None
         self.started = None
         self.typed = 0
+        self.furthest = start  # pos only goes back while retyping a word; count those keys once
+        self.retyped_at = None
         self.recent = collections.deque()  # timestamps of recent characters, for live speed
         self.thread = threading.Thread(target=self._run, daemon=True)
 
@@ -113,8 +121,11 @@ class Typer:
         span = max(now - self.recent[0], 1.0)
         return len(self.recent) / 5 / span * 60
 
+    def _base(self):
+        return 60.0 / (max(self.get_wpm(), 1) * 5)  # 5 characters per word
+
     def _delay(self, op):
-        base = 60.0 / (max(self.get_wpm(), 1) * 5)  # 5 characters per word
+        base = self._base()
         if op[0] == "k":
             return 0.06
         if op[0] in ("enter", "soft"):
@@ -131,14 +142,56 @@ class Typer:
             d += random.uniform(0.3, 1.0)  # brief pause between words now and then
         return d
 
+    def _sleep(self, seconds):
+        """Sleeps in small slices so a stop takes effect right away. False if stopped."""
+        end = time.perf_counter() + seconds
+        while not self.cancel.is_set():
+            left = end - time.perf_counter()
+            if left <= 0:
+                return True
+            time.sleep(min(left, 0.05))
+        return False
+
+    def _can_go_on(self):
+        if self.cancel.is_set():
+            return False
+        if self.backend.foreground() != self.target:
+            self.stop_reason = "another app came to the front"
+            return False
+        return True
+
+    def _word_to_retype(self):
+        """Length of the word that ends at pos, if it's a good one to delete and type again."""
+        if self.pos == self.retyped_at or (self.pos < len(self.ops) and is_word_char(self.ops[self.pos])):
+            return 0
+        start = self.pos
+        while start > 0 and is_word_char(self.ops[start - 1]):
+            start -= 1
+        # Only right after a space with no formatting shortcut in between, so the word comes back in
+        # the same formatting (Google Docs formats new text like the character before it).
+        if self.pos - start < 3 or start == 0 or self.ops[start - 1] != ("c", " "):
+            return 0
+        return self.pos - start
+
+    def _delete_word(self, n):
+        """Backspaces over the last n characters, moving pos back so the main loop types them again."""
+        self.retyped_at = self.pos
+        if not self._sleep(random.uniform(0.25, 0.7)):  # a beat, as if noticing something
+            return False
+        for _ in range(n):
+            if not self._can_go_on():
+                return False
+            self.backend.press_backspace()
+            self.pos -= 1
+            if not self._sleep(self._base() * random.uniform(0.4, 0.8)):
+                return False
+        return self._sleep(random.uniform(0.2, 0.5))
+
     def _run(self):
         b = self.backend
         self.started = time.perf_counter()
         while self.pos < len(self.ops):
-            if self.cancel.is_set():
-                return
-            if b.foreground() != self.target:
-                self.stop_reason = "another app came to the front"
+            if not self._can_go_on():
                 return
             op = self.ops[self.pos]
             kind = op[0]
@@ -154,13 +207,13 @@ class Typer:
                 time.sleep(0.03)
                 b.shortcut(op[1])
             if kind in TEXT_OPS:
-                self.typed += 1
+                if self.pos >= self.furthest:
+                    self.typed += 1
                 self.recent.append(time.perf_counter())
             self.pos += 1
-            # Sleep in small slices so a stop takes effect right away.
-            end = time.perf_counter() + self._delay(op)
-            while not self.cancel.is_set():
-                left = end - time.perf_counter()
-                if left <= 0:
-                    break
-                time.sleep(min(left, 0.05))
+            self.furthest = max(self.furthest, self.pos)
+            n = self._word_to_retype() if self.retype else 0
+            if n and random.random() < self.RETYPE_CHANCE and not self._delete_word(n):
+                return
+            if not self._sleep(self._delay(op)):
+                return

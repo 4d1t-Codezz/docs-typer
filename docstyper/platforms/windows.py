@@ -21,7 +21,7 @@ INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x2
 KEYEVENTF_UNICODE = 0x4
 VK_SHIFT, VK_CONTROL, VK_MENU = 0x10, 0x11, 0x12
-VK_RETURN, VK_TAB = 0x0D, 0x09
+VK_RETURN, VK_TAB, VK_BACK = 0x0D, 0x09, 0x08
 MOD_VK = {"ctrl": VK_CONTROL, "alt": VK_MENU, "shift": VK_SHIFT}
 
 
@@ -291,6 +291,9 @@ class Backend:
 
     def press_tab(self):
         press(VK_TAB)
+
+    def press_backspace(self):
+        press(VK_BACK)
 
     def shortcut(self, action):
         mods, vk = SHORTCUTS[action]

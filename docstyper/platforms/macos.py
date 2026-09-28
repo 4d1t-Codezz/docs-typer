@@ -31,7 +31,7 @@ MOD_FLAGS = {"shift": FLAG_SHIFT, "ctrl": FLAG_CONTROL, "option": FLAG_OPTION, "
 # ANSI virtual key codes.
 KC = {"a": 0, "b": 11, "e": 14, "i": 34, "j": 38, "l": 37, "r": 15, "u": 32, "x": 7,
       "0": 29, "1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28,
-      ".": 47, ",": 43, "return": 36, "tab": 48}
+      ".": 47, ",": 43, "return": 36, "tab": 48, "delete": 51}
 
 
 class CGPoint(ctypes.Structure):
@@ -279,6 +279,9 @@ class Backend:
 
     def press_tab(self):
         _post_key(KC["tab"])
+
+    def press_backspace(self):
+        _post_key(KC["delete"])
 
     def shortcut(self, action):
         mods, keycode = SHORTCUTS[action]

@@ -55,6 +55,9 @@ class FakeBackend:
     def press_tab(self):
         self.log.append("<Tab>")
 
+    def press_backspace(self):
+        self.log.append("<BS>")
+
     def shortcut(self, action):
         self.log.append(f"<{action}>")
 
@@ -67,6 +70,46 @@ class TyperTests(unittest.TestCase):
         t._run()
         self.assertEqual(b.log, ["h", "i", "<Enter>", "y", "o"])
         self.assertEqual(t.typed, 5)
+
+    def retyping_typer(self, b, ops):
+        t = Typer(b, ops, 0, 42, lambda: 100000, False, retype=True)
+        t.RETYPE_CHANCE = 1.0  # retype every word that qualifies
+        t._sleep = lambda seconds: True
+        return t
+
+    def test_retypes_words(self):
+        b = FakeBackend()
+        t = self.retyping_typer(b, build_ops(doc_from_plain("hi there, world"), False))
+        t._run()
+        # "hi" is too short and starts the text; the others are deleted and typed again once each.
+        self.assertEqual("".join(b.log), "hi there<BS><BS><BS><BS><BS>there, world"
+                                         "<BS><BS><BS><BS><BS>world")
+        self.assertEqual(t.typed, len("hi there, world"))
+        self.assertEqual(t.pos, len(t.ops))
+
+    def test_never_retypes_across_formatting(self):
+        b = FakeBackend()
+        paras = [Paragraph(runs=[("plain ", NOFMT), ("bold", frozenset("b"))]),
+                 Paragraph(runs=[("next", NOFMT)])]
+        t = self.retyping_typer(b, build_ops(paras, True))
+        t._run()
+        # "bold" follows a bold toggle and "next" follows Enter, so neither is safe to retype.
+        self.assertNotIn("<BS>", b.log)
+
+    def test_stop_while_deleting_leaves_pos_on_the_text(self):
+        b = FakeBackend()
+        t = self.retyping_typer(b, build_ops(doc_from_plain("a word"), False))
+        real = b.press_backspace
+
+        def press_then_stop():
+            real()
+            if b.log.count("<BS>") == 2:
+                t.cancel.set()
+
+        b.press_backspace = press_then_stop
+        t._run()
+        # "a word" minus two deleted letters is "a wo": Resume must continue from there.
+        self.assertEqual(t.pos, len("a wo"))
 
     def test_stops_when_focus_moves(self):
         b = FakeBackend()
