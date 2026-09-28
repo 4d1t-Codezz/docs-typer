@@ -409,6 +409,7 @@ class Swatches(tk.Canvas):
         self.grow = [Value(self.tweens, f"g{i}", self._draw) for i in range(len(colors))]
         self.ring = Value(self.tweens, "ring", self._draw, float(self.index))
         self.hover_i = None
+        self.aqua = self.tk.call("tk", "windowingsystem") == "aqua"
         self.bind("<Button-1>", self._click)
         self.bind("<Motion>", lambda e: self._hover(self._at(e.x)))
         self.bind("<Leave>", lambda e: self._hover(None))
@@ -440,13 +441,18 @@ class Swatches(tk.Canvas):
 
     def _draw(self):
         self.delete("all")
-        cy = self.h / 2
+        # Tk on macOS snaps ovals to whole points, leaves out a filled oval's right and bottom edge,
+        # and strokes a 1pt outline half a point down-right. Unless everything sits on whole points
+        # and fills get that edge back, the dot lands off-center inside its ring.
+        snap = (lambda v: int(v + 0.5)) if self.aqua else (lambda v: v)
+        pad = 1 if self.aqua else 0
+        cy = snap(self.h / 2)
         for i, (_, col) in enumerate(self.colors):
-            r = self.d / 2 + self.grow[i].v * 2 * self.s
-            cx = self._cx(i)
-            self.create_oval(cx - r, cy - r, cx + r, cy + r, fill=col, outline="")
-        rx = self._cx(0) + self.ring.v * (self.d + self.gap)
-        r = self.d / 2 + 3.5 * self.s
+            r = snap(self.d / 2 + self.grow[i].v * 2 * self.s)
+            cx = snap(self._cx(i))
+            self.create_oval(cx - r, cy - r, cx + r + pad, cy + r + pad, fill=col, outline="")
+        rx = snap(self._cx(0) + self.ring.v * (self.d + self.gap))
+        r = snap(self.d / 2 + 3.5 * self.s)
         self.create_oval(rx - r, cy - r, rx + r, cy + r, outline=C["text"], width=max(1, int(1.5 * self.s)))
 
 
