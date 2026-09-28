@@ -191,6 +191,7 @@ class App:
         self.doc = None  # rich document loaded from a file or rich paste
         self.doc_text = None  # the text shown in the box for self.doc
         self.ops, self.pos, self.total = [], 0, 0
+        self.stray = 0  # wrong characters a stopped mistake left in the document
         self.text_before = []  # for each op index, how many text characters come before it
         self.char_offsets = []  # text box offset of each typeable character
         self.state = "idle"  # idle | countdown | typing
@@ -312,18 +313,24 @@ class App:
         self.keep_formatting = tk.BooleanVar(value=self.prefs.get("keep_formatting", True))
         self.vary_pace = tk.BooleanVar(value=self.prefs.get("vary_pace", True))
         self.retype_words = tk.BooleanVar(value=self.prefs.get("retype_words", False))
+        self.make_mistakes = tk.BooleanVar(value=self.prefs.get("make_mistakes", False))
         keep = Check(opts, "Keep formatting", self.keep_formatting, self.options_changed, scale=s)
         keep.pack(side="left")
-        vary = Check(opts, "Vary pace slightly", self.vary_pace, self.options_changed, scale=s)
+        vary = Check(opts, "Vary pace", self.vary_pace, self.options_changed, scale=s)
         vary.pack(side="left", padx=(px(12), 0))
         retype = Check(opts, "Retype words", self.retype_words, self.options_changed, scale=s)
         retype.pack(side="left", padx=(px(12), 0))
+        mistakes = Check(opts, "Make mistakes", self.make_mistakes, self.options_changed, scale=s)
+        mistakes.pack(side="left", padx=(px(12), 0))
         Tooltip([keep, keep.box, keep.label], "Recreates bold, italics, underline, headings, lists and "
                 "alignment using Google Docs keyboard shortcuts.", scale=s)
         Tooltip([vary, vary.box, vary.label], "Adds small, natural pauses: a beat after sentences and "
                 "now and then between words.", scale=s)
         Tooltip([retype, retype.box, retype.label], "Every so often, deletes the word it just typed "
                 "and types it again, like a second thought.", scale=s)
+        Tooltip([mistakes, mistakes.box, mistakes.label], "Now and then makes a typo (a wrong, doubled, "
+                "swapped or missed letter) or mixes up words like their/there, then notices and fixes "
+                "it.", scale=s)
 
         self.progress = Progress(outer, scale=s)
         self.progress.grid(row=6, column=0, sticky="ew", padx=inset, pady=(px(8), px(8)))
@@ -378,7 +385,7 @@ class App:
     def save_prefs(self):
         save_settings({"wpm": self.wpm, "countdown": self.countdown_secs, "accent": C["accent"],
                        "keep_formatting": self.keep_formatting.get(), "vary_pace": self.vary_pace.get(),
-                       "retype_words": self.retype_words.get()})
+                       "retype_words": self.retype_words.get(), "make_mistakes": self.make_mistakes.get()})
 
     # -- text box
     def _style_tags(self):
@@ -652,6 +659,7 @@ class App:
         if self.state != "idle":
             self.stop(None)
         self.ops, self.pos, self.stop_reason = [], 0, None
+        self.stray = 0
         self.progress.to(0, ms=400)
         self.clear_typed()
         self.mascot.set_mode("idle")
@@ -675,7 +683,7 @@ class App:
                 return
             self.ops = build_ops(paras, self.keep_formatting.get())
             self.total = sum(1 for op in self.ops if is_glyph(op))
-            self.pos = 0
+            self.pos, self.stray = 0, 0
             self.run_started, self.run_typed = None, 0
         self.map_text()
         self.stop_reason = None
@@ -731,7 +739,7 @@ class App:
         self.state = "typing"
         self.overlay.hide(350)
         self.typer = Typer(self.backend, self.ops, self.pos, target, lambda: self.wpm, self.vary_pace.get(),
-                           self.retype_words.get())
+                           self.retype_words.get(), self.make_mistakes.get(), cleanup=self.stray)
         self.last_seen = self.pos
         if self.run_started is None:
             self.run_started = time.perf_counter()
@@ -746,7 +754,7 @@ class App:
     def _end_typing(self):
         if self.typer:
             self.run_typed += self.typer.typed
-            self.pos = self.typer.pos
+            self.pos, self.stray = self.typer.pos, self.typer.stray
             self.typer = None
         self.watcher.stop()
         self.state = "idle"
@@ -791,7 +799,7 @@ class App:
                 chars = self.run_typed
                 speed = chars / 5 / max(elapsed, 1) * 60
                 stats = f"{chars:,} characters · {fmt_duration(elapsed)} · {speed:.0f} wpm average"
-                self.ops, self.pos = [], 0
+                self.ops, self.pos, self.stray = [], 0, 0
                 self.stop_reason = "done"
                 self.progress.to(1.0, color="ok")
                 self.overlay.show("done", stats=stats)

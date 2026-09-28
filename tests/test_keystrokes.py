@@ -1,8 +1,9 @@
+import random
 import sys
 import threading
 import unittest
 
-from docstyper.keystrokes import ALL_ACTIONS, Typer, build_ops
+from docstyper.keystrokes import ALL_ACTIONS, Typer, build_ops, confused_with, misspell
 from docstyper.model import NOFMT, SOFT_BREAK, Paragraph, doc_from_plain
 
 
@@ -117,6 +118,101 @@ class TyperTests(unittest.TestCase):
         t._run()
         self.assertEqual(b.log, [])
         self.assertEqual(t.stop_reason, "another app came to the front")
+
+
+class FakeDoc(FakeBackend):
+    """Keeps the text a document would end up with, so every mistake must be fully fixed."""
+
+    def __init__(self):
+        super().__init__()
+        self.text = ""
+
+    def type_char(self, ch):
+        super().type_char(ch)
+        self.text += ch
+
+    def press_enter(self, shift=False):
+        super().press_enter(shift)
+        self.text += "\n"
+
+    def press_backspace(self):
+        super().press_backspace()
+        self.text = self.text[:-1]
+
+
+TEXT = "Their dog ran to the park, and its owner was happier than ever.\nYour turn to write something longer."
+
+
+class MistakeTests(unittest.TestCase):
+    def typer(self, b, ops, start=0, cleanup=0):
+        t = Typer(b, ops, start, 42, lambda: 100000, False, mistakes=True, cleanup=cleanup)
+        t.TYPO_CHANCE = t.GRAMMAR_CHANCE = 1.0
+        t._sleep = lambda seconds: True
+        return t
+
+    def test_mistakes_get_fixed(self):
+        for seed in range(40):
+            random.seed(seed)
+            b = FakeDoc()
+            t = self.typer(b, build_ops(doc_from_plain(TEXT), False))
+            t._run()
+            self.assertEqual(b.text, TEXT, f"seed {seed}")
+            self.assertIn("<BS>", b.log)
+            self.assertEqual(t.typed, len(TEXT))
+
+    def test_grammar_mistake(self):
+        random.seed(0)
+        b = FakeDoc()
+        t = self.typer(b, build_ops(doc_from_plain("I like their car"), False))
+        t.TYPO_CHANCE = 0.0
+        t._run()
+        self.assertTrue("".join(b.log).startswith("I like there<BS>") or
+                        "".join(b.log).startswith("I like they're<BS>"), b.log)
+        self.assertEqual(b.text, "I like their car")
+
+    def test_formatted_word_is_never_deleted_whole(self):
+        # "their" is bold right after a plain space, so swapping the whole word would lose the bold.
+        paras = [Paragraph(runs=[("see ", NOFMT), ("their", frozenset("b"))])]
+        for seed in range(20):
+            random.seed(seed)
+            b = FakeDoc()
+            t = self.typer(b, build_ops(paras, True))
+            t._run()
+            self.assertNotIn("there", b.text)
+            log = "".join(b.log)
+            self.assertNotIn("<bold>there", log)
+            self.assertNotIn("<bold>they're", log)
+            self.assertEqual(b.text, "see their")
+
+    def test_resume_cleans_up_a_stopped_mistake(self):
+        random.seed(3)
+        ops = build_ops(doc_from_plain("Your answer was better than mine"), False)
+        b = FakeDoc()
+        t = self.typer(b, ops)
+        real = b.type_char
+
+        def type_then_stop(ch):
+            real(ch)
+            if t.stray:  # stop in the middle of a mistake
+                t.cancel.set()
+
+        b.type_char = type_then_stop
+        t._run()
+        self.assertGreater(t.stray, 0)
+        b.type_char = real
+        t2 = self.typer(b, ops, start=t.pos, cleanup=t.stray)
+        t2._run()
+        self.assertEqual(b.text, "Your answer was better than mine")
+
+    def test_helpers(self):
+        random.seed(0)
+        for _ in range(50):
+            wrong = misspell("there")
+            self.assertTrue(wrong and wrong != "there"[:len(wrong)])
+        self.assertIsNone(misspell("9am"))
+        self.assertEqual(confused_with("Its")[0], "I")
+        self.assertIn(confused_with("it’s"), ("its",))
+        self.assertIsNone(confused_with("dog"))
 
 
 @unittest.skipUnless(sys.platform == "win32", "Windows backend")

@@ -63,6 +63,9 @@ Tips:
 - **Speed from 10 to 200 wpm**, with an optional *vary pace* mode that adds natural pauses.
 - **Retype words** (optional): every so often it deletes the word it just typed and types it
   again, like a second thought. It only does this where the word keeps its formatting.
+- **Make mistakes** (optional): now and then it makes a typo (a neighboring key, a doubled, swapped
+  or missed letter) or mixes up words like *their/there*, *its/it's* or *then/than*. It notices
+  a moment later, backspaces and fixes it, so the finished document is exactly your text.
 - **Hands-off safety:** any real key, click, scroll or mouse movement stops typing, and so does
   switching to another app.
 - **Live view:** the text in the window lights up as it's typed, a key strip shows each key, and

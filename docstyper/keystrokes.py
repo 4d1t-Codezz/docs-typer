@@ -22,6 +22,23 @@ ALL_ACTIONS = (set(FMT_ACTIONS.values()) | set(LIST_ACTIONS.values()) | set(ALIG
 
 TEXT_OPS = ("c", "enter", "soft", "tab")  # ops that correspond to a character of the text
 
+# For "make mistakes": keys next to each other, and words people often mix up.
+_ROWS = ("qwertyuiop", "asdfghjkl", "zxcvbnm")
+NEIGHBORS = {}
+for _r, _row in enumerate(_ROWS):
+    for _c, _ch in enumerate(_row):
+        near = [_row[_c + d] for d in (-1, 1) if 0 <= _c + d < len(_row)]
+        near += [_ROWS[_r + d][_c] for d in (-1, 1) if 0 <= _r + d < len(_ROWS) and _c < len(_ROWS[_r + d])]
+        NEIGHBORS[_ch] = near
+CONFUSED = {
+    "their": ("there", "they're"), "there": ("their",), "they're": ("their", "there"),
+    "your": ("you're",), "you're": ("your",), "its": ("it's",), "it's": ("its",),
+    "then": ("than",), "than": ("then",), "affect": ("effect",), "effect": ("affect",),
+    "to": ("too",), "too": ("to",), "were": ("where",), "where": ("were",), "lose": ("loose",),
+    "loose": ("lose",), "accept": ("except",), "except": ("accept",), "whose": ("who's",),
+    "who's": ("whose",),
+}
+
 
 def build_ops(paras, keep_formatting):
     """Ops: ('c', char) | ('enter',) | ('soft',) | ('tab',) | ('indent',) | ('k', action)."""
@@ -95,14 +112,53 @@ def is_word_char(op):
     return op[0] == "c" and (op[1].isalnum() or op[1] in "'’-")
 
 
+def misspell(rest):
+    """A slip at the start of rest (the rest of a word, 2+ letters) plus a few right letters after it,
+    as typed before noticing. None if the letter isn't one to slip on."""
+    first = rest[0]
+    if not first.isalpha() or not rest[1].isalpha():
+        return None
+    kinds = ["near", "double", "skip"] + (["swap"] if rest[1] != first else [])
+    kind = random.choice(kinds)
+    near = NEIGHBORS.get(first.lower())
+    if kind == "near" and near:
+        slip = random.choice(near)
+        wrong, used = (slip.upper() if first.isupper() else slip), 1
+    elif kind == "swap":
+        wrong, used = rest[1] + first, 2
+    elif kind == "skip":
+        return rest[1:2 + random.randint(0, 2)]  # the next letters, without this one
+    else:
+        wrong, used = first * 2, 1
+    return wrong + rest[used:used + random.randint(0, 3)]
+
+
+def confused_with(word):
+    """A word often typed by mistake for this one (their/there, its/it's, ...), or None."""
+    alts = CONFUSED.get(word.lower().replace("’", "'"))
+    if not alts:
+        return None
+    alt = random.choice(alts)
+    if "’" in word or ("'" not in word and "’" in alt):
+        alt = alt.replace("'", "’")
+    return alt[0].upper() + alt[1:] if word[0].isupper() else alt
+
+
 class Typer:
     """Plays ops into the front app on a background thread until done, stopped, or focus moves."""
 
     RETYPE_CHANCE = 0.04  # per word that can be retyped, so roughly one every 30 to 40 words
+    TYPO_CHANCE = 0.05  # per word of 3+ letters: a spelling slip that gets noticed and fixed
+    GRAMMAR_CHANCE = 0.3  # per often-confused word (their, your, its, ...): the wrong one, then fixed
 
-    def __init__(self, backend, ops, start, target, get_wpm, vary, retype=False):
+    def __init__(self, backend, ops, start, target, get_wpm, vary, retype=False, mistakes=False,
+                 cleanup=0):
         self.backend, self.ops, self.pos = backend, ops, start
         self.target, self.get_wpm, self.vary, self.retype = target, get_wpm, vary, retype
+        self.mistakes = mistakes
+        self.stray = cleanup  # wrong characters in the document that still need deleting
+        self.typo_at = None  # where the next spelling slip goes, planned at the start of a word
+        self.checked_at = None
         self.cancel = threading.Event()
         self.stop_reason = None
         self.started = None
@@ -173,6 +229,57 @@ class Typer:
             return 0
         return self.pos - start
 
+    def _word_from(self, i):
+        j = i
+        while j < len(self.ops) and is_word_char(self.ops[j]):
+            j += 1
+        return "".join(op[1] for op in self.ops[i:j])
+
+    def _mistake(self):
+        """Wrong text to type at pos before the right text, or None. Mistakes stay inside a word, or
+        replace a whole word that follows a plain space, so fixing them never changes formatting."""
+        pos, ops = self.pos, self.ops
+        if pos == self.checked_at or not is_word_char(ops[pos]):
+            return None
+        self.checked_at = pos
+        if pos == 0 or not is_word_char(ops[pos - 1]):  # start of a word: plan what happens in it
+            self.typo_at = None
+            word = self._word_from(pos)
+            alt = confused_with(word) if pos and ops[pos - 1] == ("c", " ") else None
+            if alt and random.random() < self.GRAMMAR_CHANCE:
+                return alt
+            if len(word) >= 3 and random.random() < self.TYPO_CHANCE:
+                self.typo_at = pos + random.randint(1, len(word) - 2)
+            return None
+        if pos == self.typo_at:
+            self.typo_at = None
+            return misspell(self._word_from(pos))
+        return None
+
+    def _erase_stray(self):
+        while self.stray:
+            if not self._can_go_on():
+                return False
+            self.backend.press_backspace()
+            self.stray -= 1
+            if not self._sleep(self._base() * random.uniform(0.4, 0.8)):
+                return False
+        return self._sleep(random.uniform(0.15, 0.4))
+
+    def _detour(self, wrong):
+        """Types a mistake, pauses as if noticing it, then backspaces it away. pos doesn't move."""
+        for ch in wrong:
+            if not self._can_go_on():
+                return False
+            self.backend.type_char(ch)
+            self.stray += 1
+            self.recent.append(time.perf_counter())
+            if not self._sleep(self._delay(("c", ch))):
+                return False
+        if not self._sleep(random.uniform(0.3, 0.9)):
+            return False
+        return self._erase_stray()
+
     def _delete_word(self, n):
         """Backspaces over the last n characters, moving pos back so the main loop types them again."""
         self.retyped_at = self.pos
@@ -190,8 +297,13 @@ class Typer:
     def _run(self):
         b = self.backend
         self.started = time.perf_counter()
+        if self.stray and not self._erase_stray():  # left over from a mistake when it was stopped
+            return
         while self.pos < len(self.ops):
             if not self._can_go_on():
+                return
+            wrong = self._mistake() if self.mistakes else None
+            if wrong and not self._detour(wrong):
                 return
             op = self.ops[self.pos]
             kind = op[0]
