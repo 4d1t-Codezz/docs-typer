@@ -6,3 +6,5 @@
 *.png binary
 *.ico binary
 *.icns binary
+*.c text eol=lf
+scripts/mac-launcher binary

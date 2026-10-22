@@ -8,13 +8,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
-# A usable Python is 3.10+ with Tk 8.6+ and a working XML parser (needed for .docx/.odt).
-# Homebrew's Python can fail the last check on some macOS versions (pyexpat links the system libexpat).
-CHECK='import sys, tkinter, pyexpat; assert sys.version_info >= (3, 10) and tkinter.TkVersion >= 8.6; print(sys.executable)'
+# A usable Python is 3.10+ with Tk 8.6+, a working XML parser (needed for .docx/.odt) and a shared
+# library for the app's launcher to load. Homebrew's Python can fail the XML check on some macOS
+# versions (pyexpat links the system libexpat), and pyenv builds often have no shared library.
+LIBPY_EXPR='os.path.join(s.get_config_var("PYTHONFRAMEWORKPREFIX") or s.get_config_var("LIBDIR"), s.get_config_var("LDLIBRARY"))'
+CHECK="import os, sys, sysconfig as s, tkinter, pyexpat; assert sys.version_info >= (3, 10) and tkinter.TkVersion >= 8.6 and os.path.isfile($LIBPY_EXPR); print(sys.executable)"
 
 if [ $# -ge 1 ]; then
   if ! PY="$("$1" -c "$CHECK" 2>/dev/null)"; then
-    echo "The Python at $1 needs to be 3.10+ with Tk 8.6+ and a working pyexpat module." >&2
+    echo "The Python at $1 needs to be 3.10+ with Tk 8.6+, pyexpat and a shared library." >&2
     exit 1
   fi
 else
@@ -29,7 +31,7 @@ else
     PY=""
   done
   if [ -z "$PY" ]; then
-    echo "No suitable Python found (needs 3.10+ with Tk 8.6+ and pyexpat)." >&2
+    echo "No suitable Python found (needs 3.10+ with Tk 8.6+, pyexpat and a shared library)." >&2
     echo "Install one from https://www.python.org/downloads/macos/, or: brew install uv && uv python install 3.12" >&2
     exit 2
   fi
@@ -44,22 +46,16 @@ find "$APP/Contents/Resources/app" -name "__pycache__" -type d -prune -exec rm -
 cp "$REPO/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # The launcher runs Python inside the app's own process, so macOS files the Accessibility and
-# Input Monitoring permissions under Docs Typer (see mac-launcher.c). Without a C compiler, fall
-# back to a script, which works but makes macOS ask on behalf of python3 instead.
-LIBPY="$("$PY" -c 'import os, sysconfig as s; fw = s.get_config_var("PYTHONFRAMEWORKPREFIX"); ld = s.get_config_var("LDLIBRARY"); print(os.path.join(fw, ld) if fw else os.path.join(s.get_config_var("LIBDIR"), ld))')"
+# Input Monitoring permissions under Docs Typer (see mac-launcher.c). It reads which Python to use
+# from python.txt. With Apple's command line tools it's compiled fresh; otherwise the prebuilt
+# universal copy in scripts/ is used, so no Xcode download is needed.
+LIBPY="$("$PY" -c "import os, sysconfig as s; print($LIBPY_EXPR)")"
 PYHOME="$("$PY" -c 'import sys; print(sys.base_prefix)')"
-if [ -f "$LIBPY" ] && xcrun --find cc >/dev/null 2>&1; then
-  cc -O2 -Wall -o "$APP/Contents/MacOS/DocsTyper" "$REPO/scripts/mac-launcher.c" \
-    -DLIBPYTHON="\"$LIBPY\"" -DPYTHONHOME_DIR="\"$PYHOME\""
+printf '%s\n%s\n' "$LIBPY" "$PYHOME" > "$APP/Contents/Resources/python.txt"
+if xcode-select -p >/dev/null 2>&1 && xcrun --find cc >/dev/null 2>&1; then
+  cc -O2 -Wall -o "$APP/Contents/MacOS/DocsTyper" "$REPO/scripts/mac-launcher.c"
 else
-  echo "Note: no C compiler (install one with: xcode-select --install), so macOS will list the" >&2
-  echo "permissions under python3 instead of Docs Typer." >&2
-  cat > "$APP/Contents/MacOS/DocsTyper" <<EOF
-#!/bin/bash
-cd "\$(dirname "\$0")/../Resources/app"
-exec "$PY" -m docstyper
-EOF
-  chmod +x "$APP/Contents/MacOS/DocsTyper"
+  cp "$REPO/scripts/mac-launcher" "$APP/Contents/MacOS/DocsTyper"
 fi
 
 cat > "$APP/Contents/Info.plist" <<'EOF'

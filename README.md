@@ -11,17 +11,28 @@ Types a document into Google Docs one keystroke at a time, keeping its formattin
 
 ## Install
 
-**1. Download it.** Click **[Download ZIP](https://github.com/4d1t-Codezz/docs-typer/archive/refs/heads/main.zip)**
-(or the green **Code** button → **Download ZIP**), then open the ZIP to unzip it.
+Copy one line, paste it, press Enter. It downloads Docs Typer, gets Python for it if you don't
+have one (you don't need to install anything first), and opens it.
 
-**2. Run the installer** in the unzipped folder:
+**On a Mac:** open **Terminal** (press ⌘+Space, type `Terminal`, press Enter) and paste:
 
-| On a Mac | On Windows |
-| --- | --- |
-| Double-click **`Install on Mac.command`** | Double-click **`Install on Windows.bat`** |
-| It puts **Docs Typer** in your Applications folder and opens it. If you don't have a suitable Python, it offers to install one for you. | It adds **Docs Typer** to your desktop and Start menu and opens it. If you don't have Python, it opens the download page. On the installer's first screen, tick **Add python.exe to PATH**, then run `Install on Windows.bat` again. |
+```bash
+curl -fsSL https://raw.githubusercontent.com/4d1t-Codezz/docs-typer/main/install.sh | bash
+```
 
-**3. Mac only: allow permissions.** The first time you press **Start**, macOS asks for
+It puts **Docs Typer** in your Applications folder.
+
+**On Windows:** open **PowerShell** (press Start, type `PowerShell`, press Enter) and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/4d1t-Codezz/docs-typer/main/install.ps1 | iex
+```
+
+It adds **Docs Typer** to your desktop and Start menu.
+
+To update later, run the same line again.
+
+**Mac only: allow permissions.** The first time you press **Start**, macOS asks for
 **Accessibility** (so it can type) and **Input Monitoring** (so it can stop when you touch
 anything). Turn both on for Docs Typer in **System Settings → Privacy & Security**, then quit and
 reopen Docs Typer.
@@ -30,14 +41,29 @@ reopen Docs Typer.
 > won't match. In both lists, select **Docs Typer**, click **−** to remove it, then press **Start**
 > again and allow it fresh. Old **python3** entries from an earlier version can be removed too.
 
-> **Mac says the installer "can't be opened" or "Apple could not verify" it?** Click **Done**, then
-> go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to
-> `Install on Mac.command`.
->
-> **Windows shows "Windows protected your PC"?** Click **More info → Run anyway**.
+<details>
+<summary><b>Rather not use Terminal or PowerShell?</b></summary>
 
-On Windows, keep the unzipped folder where it is, because the shortcuts run Docs Typer from there. To
-update, download the new ZIP and run the installer again.
+Click **[Download ZIP](https://github.com/4d1t-Codezz/docs-typer/archive/refs/heads/main.zip)**,
+open the ZIP to unzip it, then double-click **`Install on Mac.command`** or
+**`Install on Windows.bat`** in the unzipped folder. It does the same as the line above.
+You can delete the folder afterwards.
+
+- **Mac says it "can't be opened" or "Apple could not verify" it?** Click **Done**, then go to
+  **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to
+  `Install on Mac.command`.
+- **Windows shows "Windows protected your PC"?** Click **More info → Run anyway**.
+
+</details>
+
+<details>
+<summary><b>Uninstall</b></summary>
+
+- **Mac:** drag **Docs Typer** from Applications to the Trash.
+- **Windows:** delete the **Docs Typer** shortcuts on your desktop and in the Start menu, and the
+  folder `%LOCALAPPDATA%\Programs\Docs Typer` (paste that into the File Explorer address bar).
+
+</details>
 
 ## Use it
 
@@ -76,9 +102,16 @@ Tips:
 
 ## For developers
 
-Run it straight from the repo with `python -m docstyper` (Python 3.10+ with Tk 8.6+). The
-installers call the helper scripts in `scripts/`. `build-mac-app.sh` builds `dist/Docs Typer.app`, and
-`make-windows-shortcuts.ps1` creates the Windows shortcuts.
+Run it straight from the repo with `python -m docstyper` (Python 3.10+ with Tk 8.6+).
+
+The installers are `install.sh` (Mac) and `install.ps1` (Windows); the double-click files just run
+them. On Windows it copies the app to `%LOCALAPPDATA%\Programs\Docs Typer` and points the shortcuts
+at a Python there or one you already have. On a Mac, `scripts/build-mac-app.sh` builds
+`dist/Docs Typer.app`. Its launcher (`scripts/mac-launcher.c`) runs Python inside the app so macOS
+asks for permissions as Docs Typer, and it's compiled if you have Apple's command line tools;
+otherwise the prebuilt universal `scripts/mac-launcher` is used. Rebuild that after changing the
+launcher (the command is at the top of `mac-launcher.c`). If no suitable Python is found, both
+installers get Python 3.12 with [uv](https://docs.astral.sh/uv/).
 
 ### How it works
 
@@ -104,4 +137,5 @@ python -m unittest discover -s tests -t . -v
 
 The tests cover the file readers, the keystroke plan, the typing loop (with a fake backend), and
 each platform's shortcut table. They also include a UI smoke test that plays the intro and every
-animation without sending any input. GitHub Actions runs them on Windows and macOS.
+animation without sending any input. GitHub Actions runs them on Windows and macOS, and also runs
+both installers there, including the one-line versions.

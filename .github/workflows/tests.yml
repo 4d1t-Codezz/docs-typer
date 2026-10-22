@@ -21,3 +21,71 @@ jobs:
         run: python -c "import tkinter; print('Tk', tkinter.TkVersion)"
       - name: Run tests
         run: python -m unittest discover -s tests -t . -v
+
+  # Runs the installers the way people do: from a downloaded copy, then straight from the web
+  # (the one-liners in the README), which also checks that updating over an install works.
+  install-mac:
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+    env:
+      DOCSTYPER_NO_OPEN: "1"
+      DOCSTYPER_REF: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install into a temporary folder
+        run: echo "DOCSTYPER_APP_DIR=$RUNNER_TEMP/apps" >> "$GITHUB_ENV"
+      - name: Install from the downloaded folder
+        run: ./install.sh
+      - name: Install with the one-liner
+        run: curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.sh | bash
+      - name: Check the app
+        run: |
+          app="$DOCSTYPER_APP_DIR/Docs Typer.app"
+          codesign --verify "$app"
+          cat "$app/Contents/Resources/python.txt"
+          home="$(sed -n 2p "$app/Contents/Resources/python.txt")"
+          cd "$app/Contents/Resources/app" && "$home/bin/python3" -c "import docstyper.ui; print('ok')"
+      - name: Check the prebuilt launcher
+        run: |
+          app="$RUNNER_TEMP/stub/Docs Typer.app"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/app/docstyper"
+          cp scripts/mac-launcher "$app/Contents/MacOS/DocsTyper"
+          cp "$DOCSTYPER_APP_DIR/Docs Typer.app/Contents/Resources/python.txt" "$app/Contents/Resources/"
+          touch "$app/Contents/Resources/app/docstyper/__init__.py"
+          echo 'import tkinter, pyexpat; print("launcher ok")' > "$app/Contents/Resources/app/docstyper/__main__.py"
+          "$app/Contents/MacOS/DocsTyper" | grep "launcher ok"
+
+  install-windows:
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    env:
+      DOCSTYPER_NO_OPEN: "1"
+      DOCSTYPER_REF: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install from the downloaded folder (uses the Python that's there)
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
+      - name: Install with the one-liner (gets its own Python)
+        shell: powershell
+        env:
+          DOCSTYPER_OWN_PYTHON: "1"
+        run: irm https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.ps1 | iex
+      - name: Check the shortcuts
+        shell: powershell
+        run: |
+          $shell = New-Object -ComObject WScript.Shell
+          foreach ($path in "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Docs Typer.lnk", "$([Environment]::GetFolderPath('Desktop'))\Docs Typer.lnk") {
+            $lnk = $shell.CreateShortcut($path)
+            Write-Output "$path -> $($lnk.TargetPath) $($lnk.Arguments) in $($lnk.WorkingDirectory)"
+            if (-not (Test-Path $lnk.TargetPath)) { throw "missing $($lnk.TargetPath)" }
+            if ($lnk.TargetPath -notlike "$env:LOCALAPPDATA\Programs\Docs Typer\python\*") { throw "not using its own Python" }
+            $python = Join-Path (Split-Path $lnk.TargetPath) "python.exe"
+            Push-Location $lnk.WorkingDirectory
+            & $python -c "import docstyper.ui; print('ok')"
+            if ($LASTEXITCODE -ne 0) { throw "import failed" }
+            Pop-Location
+          }

@@ -3,8 +3,12 @@
  * Monitoring access. A script launcher would pass those requests to python3, and switching Docs
  * Typer on in System Settings would then do nothing.
  *
- * build-mac-app.sh compiles this with LIBPYTHON (the Python shared library) and PYTHONHOME_DIR
- * (that Python's sys.base_prefix) baked in. */
+ * It reads which Python to use from Contents/Resources/python.txt, which build-mac-app.sh writes:
+ * the Python shared library on the first line and that Python's sys.base_prefix on the second.
+ * Because nothing is baked in, scripts/mac-launcher (a universal build of this file) works on
+ * Macs without a C compiler. To rebuild it after changing this file:
+ *   cc -O2 -Wall -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 \
+ *      -o scripts/mac-launcher scripts/mac-launcher.c */
 
 #include <dlfcn.h>
 #include <limits.h>
@@ -26,17 +30,29 @@ int main(int argc, char **argv) {
     char *slash = strrchr(real, '/');
     if (!slash) return 1;
     *slash = '\0';
-    char app_dir[PATH_MAX];
+    char app_dir[PATH_MAX], conf_path[PATH_MAX];
     snprintf(app_dir, sizeof app_dir, "%s/../Resources/app", real);
+    snprintf(conf_path, sizeof conf_path, "%s/../Resources/python.txt", real);
+
+    char libpython[PATH_MAX], pythonhome[PATH_MAX];
+    FILE *conf = fopen(conf_path, "r");
+    if (!conf || !fgets(libpython, sizeof libpython, conf) || !fgets(pythonhome, sizeof pythonhome, conf)) {
+        fprintf(stderr, "Docs Typer: can't read %s. Reinstall it with install.sh.\n", conf_path);
+        return 1;
+    }
+    fclose(conf);
+    libpython[strcspn(libpython, "\n")] = '\0';
+    pythonhome[strcspn(pythonhome, "\n")] = '\0';
+
     if (chdir(app_dir) != 0) {
         fprintf(stderr, "Docs Typer: can't open %s\n", app_dir);
         return 1;
     }
 
-    setenv("PYTHONHOME", PYTHONHOME_DIR, 1);
-    void *lib = dlopen(LIBPYTHON, RTLD_NOW | RTLD_GLOBAL);
+    setenv("PYTHONHOME", pythonhome, 1);
+    void *lib = dlopen(libpython, RTLD_NOW | RTLD_GLOBAL);
     if (!lib) {
-        fprintf(stderr, "Docs Typer: can't load Python (%s). Reinstall it with Install on Mac.command.\n",
+        fprintf(stderr, "Docs Typer: can't load Python (%s). Reinstall it with install.sh.\n",
                 dlerror());
         return 1;
     }
